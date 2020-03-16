@@ -126,12 +126,13 @@ func generateDelimiterRegex(delimiters []rune) (lookBehind, lookAhead string) {
 
 func generateSearchPattern(flags []string, delimiters []rune, padPattern bool) string {
 	flagRegex := generateFlagRegex(flags)
-	lookBehind, lookAhead := generateDelimiterRegex(delimiters)
+	//lookBehind, lookAhead := generateDelimiterRegex(delimiters)
 	if padPattern {
 		// Padding the left-most and right-most search terms with the "a^" regular expression, which never matches anything. This is done to work-around strange behavior causing the left-most and right-most items to be ignored by ag on windows
 		// example: (?<=[\"'\`])(a^|flag1|flag2|flag3|a^)(?=[\"'\`])"
-		return lookBehind + "(a^|" + flagRegex + "|a^)" + lookAhead
+		return "(a^|" + flagRegex + "|a^)"
 	}
 	// example: (?<=[\"'\`])(flag1|flag2|flag3)(?=[\"'\`])"
-	return lookBehind + "(" + flagRegex + ")" + lookAhead
+	//fmt.Println("(" + flagRegex + ")")
+	return "(" + flagRegex + ")"
 }

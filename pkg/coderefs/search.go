@@ -6,7 +6,6 @@ import (
 
 	"github.com/launchdarkly/ld-find-code-refs/internal/command"
 	"github.com/launchdarkly/ld-find-code-refs/internal/log"
-	o "github.com/launchdarkly/ld-find-code-refs/internal/options"
 )
 
 var NoSearchPatternErr = errors.New("failed to generate a valid search pattern")
@@ -82,13 +81,16 @@ func paginatedSearch(cmd command.Searcher, flags []string, maxSumFlagKeyLength, 
 	return results, nil
 }
 
-func findReferences(cmd command.Searcher, flags []string, ctxLines int, exclude *regexp.Regexp) (searchResultLines, error) {
-	delims := o.Delimiters.Value()
-	log.Info.Printf("finding code references with delimiters: %s", delims.String())
-	results, err := paginatedSearch(cmd, flags, command.SafePaginationCharCount(), ctxLines, delims)
-	if err != nil {
-		return searchResultLines{}, err
-	}
+func findReferences(cmd command.Searcher, flags map[string][]string, ctxLines int, exclude *regexp.Regexp, delims []rune) (searchResultLines, error) {
+	var results [][]string
+	var err error
+	for _, aliases := range flags {
+		results, err = paginatedSearch(cmd, aliases, command.SafePaginationCharCount(), ctxLines, delims)
+		if err != nil {
+			return searchResultLines{}, err
+		}
 
-	return generateReferences(flags, results, ctxLines, string(delims), exclude), nil
+		return generateReferences(flags, results, ctxLines, string(delims), exclude), nil
+	}
+	return nil, nil
 }

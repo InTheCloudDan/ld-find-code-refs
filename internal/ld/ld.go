@@ -76,15 +76,26 @@ func InitApiClient(options ApiOptions) ApiClient {
 	}
 }
 
-func (c ApiClient) GetFlagKeyList() ([]string, error) {
+func (c ApiClient) GetFlagKeyList() ([]map[string][]string, error) {
 	ctx := context.WithValue(context.Background(), ldapi.ContextAPIKey, ldapi.APIKey{Key: c.Options.ApiKey})
 	flags, _, err := c.ldClient.FeatureFlagsApi.GetFeatureFlags(ctx, c.Options.ProjKey, nil)
 	if err != nil {
 		return nil, err
 	}
-	flagKeys := make([]string, 0, len(flags.Items))
+	flagKeys := []map[string][]string{}
 	for _, flag := range flags.Items {
-		flagKeys = append(flagKeys, flag.Key)
+		//
+		// 	fmt.Println(properties)
+		// }
+		flagContainer := make(map[string][]string)
+		flagContainer[flag.Key] = []string{flag.Key}
+		for property, value := range flag.CustomProperties {
+			if property == "cr.aliases" {
+				cpValue := value.Value
+				flagContainer[flag.Key] = append(flagContainer[flag.Key], cpValue...)
+			}
+		}
+		flagKeys = append(flagKeys, flagContainer)
 	}
 	return flagKeys, nil
 }

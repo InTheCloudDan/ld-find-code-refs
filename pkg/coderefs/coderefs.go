@@ -110,7 +110,13 @@ func Scan() {
 		os.Exit(0)
 	}
 
-	filteredFlags, omittedFlags := filterShortFlagKeys(flags)
+	filteredFlags := []map[string][]string{}
+	omittedFlags := []map[string][]string{}
+	for _, flag := range flags {
+		filteredFlag, omittedFlag := filterShortFlagKeys(flag)
+		filteredFlags = append(filteredFlags, filteredFlag)
+		omittedFlags = append(omittedFlags, omittedFlag)
+	}
 	if len(filteredFlags) == 0 {
 		log.Info.Printf("no flag keys longer than the minimum flag key length (%v) were found for project: %s, exiting early",
 			minFlagKeyLen, projKey)
@@ -134,9 +140,15 @@ func Scan() {
 
 	// exclude option has already been validated as regex in options.go
 	excludeRegex, _ := regexp.Compile(o.Exclude.Value())
-	refs, err := findReferences(searchClient, filteredFlags, ctxLines, excludeRegex)
-	if err != nil {
-		log.Fatal.Fatalf("error searching for flag key references: %s", err)
+	var refs searchResultLines
+	delims := o.Delimiters.Value()
+	log.Info.Printf("finding code references with delimiters: %s", delims.String())
+	for _, flag := range filteredFlags {
+		ref, err := findReferences(searchClient, flag, ctxLines, excludeRegex, delims)
+		if err != nil {
+			log.Fatal.Fatalf("error searching for flag key references: %s", err)
+		}
+		refs = append(refs, ref...)
 	}
 
 	b.SearchResults = refs
@@ -227,20 +239,22 @@ func calculateStaleBranches(branches []ld.BranchRep, remoteBranches map[string]b
 
 // Very short flag keys lead to many false positives when searching in code,
 // so we filter them out.
-func filterShortFlagKeys(flags []string) (filtered []string, omitted []string) {
-	filteredFlags := []string{}
-	omittedFlags := []string{}
-	for _, flag := range flags {
-		if len(flag) >= minFlagKeyLen {
-			filteredFlags = append(filteredFlags, flag)
-		} else {
-			omittedFlags = append(omittedFlags, flag)
+func filterShortFlagKeys(flag map[string][]string) (filtered map[string][]string, omitted map[string][]string) {
+	filteredFlag := map[string][]string{}
+	omittedFlag := map[string][]string{}
+	for flag, aliases := range flag {
+		for _, alias := range aliases {
+			if len(alias) >= minFlagKeyLen {
+				filteredFlag[flag] = append(filteredFlag[flag], alias)
+			} else {
+				omittedFlag[flag] = append(omittedFlag[flag], alias)
+			}
 		}
 	}
-	return filteredFlags, omittedFlags
+	return filteredFlag, omittedFlag
 }
 
-func getFlags(ldApi ld.ApiClient) ([]string, error) {
+func getFlags(ldApi ld.ApiClient) ([]map[string][]string, error) {
 	flags, err := ldApi.GetFlagKeyList()
 	if err != nil {
 		return nil, err
@@ -248,7 +262,7 @@ func getFlags(ldApi ld.ApiClient) ([]string, error) {
 	return flags, nil
 }
 
-func generateReferences(flags []string, searchResult [][]string, ctxLines int, delims string, exclude *regexp.Regexp) []searchResultLine {
+func generateReferences(flags map[string][]string, searchResult [][]string, ctxLines int, delims string, exclude *regexp.Regexp) []searchResultLine {
 	references := []searchResultLine{}
 
 	for _, r := range searchResult {
@@ -276,12 +290,24 @@ func generateReferences(flags []string, searchResult [][]string, ctxLines int, d
 	return references
 }
 
-func findReferencedFlags(ref string, flags []string, delims string) []string {
+func findReferencedFlags(ref string, flags map[string][]string, delims string) []string {
 	ret := []string{}
-	for _, flag := range flags {
-		matcher := regexp.MustCompile(fmt.Sprintf("[%s]%s[%s]", delims, flag, delims))
-		if matcher.MatchString(ref) {
-			ret = append(ret, flag)
+	for flag, values := range flags {
+		for i, alias := range values {
+			var matcher *regexp.Regexp
+			if i == 0 {
+				matcher = regexp.MustCompile(fmt.Sprintf("[%s]%s[%s]", delims, alias, delims))
+				if matcher.MatchString(ref) {
+					ret = append(ret, flag)
+				}
+			} else {
+				matcher = regexp.MustCompile(fmt.Sprintf("^.*(%s).*$", alias))
+				if matcher.MatchString(ref) {
+					fmt.Println(ref)
+					ret = append(ret, flag)
+				}
+			}
+
 		}
 	}
 	return ret
@@ -312,7 +338,7 @@ func (g searchResultLines) makeReferenceHunksReps(projKey string, ctxLines int) 
 	shouldSuppressUnexpectedError := false
 	for _, fileSearchResults := range aggregatedSearchResults {
 		if numHunks > maxHunkCount {
-			log.Warning.Printf("found %d code references across all files, which exceeeded the limit of %d. halting code reference search", numHunks, maxHunkCount)
+			log.Warning.Printf("found %d code references across all files, which exceeded the limit of %d. halting code reference search", numHunks, maxHunkCount)
 			break
 		}
 
