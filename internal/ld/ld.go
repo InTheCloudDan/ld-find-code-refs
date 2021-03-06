@@ -15,7 +15,9 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 
+	"github.com/antihax/optional"
 	h "github.com/hashicorp/go-retryablehttp"
 	"github.com/olekukonko/tablewriter"
 
@@ -44,18 +46,31 @@ const (
 	reposPath = v2ApiPath + "/code-refs/repositories"
 )
 
+type ConfigurationError struct {
+	error
+}
+
+func newConfigurationError(e string) ConfigurationError {
+	return ConfigurationError{errors.New((e))}
+}
+
 var (
 	NotFoundErr                       = errors.New("not found")
 	ConflictErr                       = errors.New("conflict")
-	EntityTooLargeErr                 = errors.New("entity too large")
 	RateLimitExceededErr              = errors.New("rate limit exceeded")
 	InternalServiceErr                = errors.New("internal service error")
 	ServiceUnavailableErr             = errors.New("service unavailable")
-	UnauthorizedErr                   = errors.New("unauthorized, check your LaunchDarkly access token")
-	UnknownErr                        = errors.New("an unknown error occured")
-	RepositoryDisabledErr             = errors.New("repository is disabled")
 	BranchUpdateSequenceIdConflictErr = errors.New("updateSequenceId conflict")
+	RepositoryDisabledErr             = newConfigurationError("repository is disabled")
+	UnauthorizedErr                   = newConfigurationError("unauthorized, check your LaunchDarkly access token")
+	EntityTooLargeErr                 = newConfigurationError("entity too large")
 )
+
+// IsTransient returns true if the error returned by the LaunchDarkly API is either unexpected, or unable to be resolved by the user.
+func IsTransient(err error) bool {
+	var e ConfigurationError
+	return !errors.As(err, &e)
+}
 
 func InitApiClient(options ApiOptions) ApiClient {
 	if options.BaseUri == "" {
@@ -78,14 +93,22 @@ func InitApiClient(options ApiOptions) ApiClient {
 
 func (c ApiClient) GetFlagKeyList() ([]string, error) {
 	ctx := context.WithValue(context.Background(), ldapi.ContextAPIKey, ldapi.APIKey{Key: c.Options.ApiKey})
-	flags, _, err := c.ldClient.FeatureFlagsApi.GetFeatureFlags(ctx, c.Options.ProjKey, nil)
+
+	flags, _, err := c.ldClient.FeatureFlagsApi.GetFeatureFlags(ctx, c.Options.ProjKey, &ldapi.GetFeatureFlagsOpts{Summary: optional.NewBool(true)})
 	if err != nil {
 		return nil, err
 	}
+
+	archivedFlags, _, err := c.ldClient.FeatureFlagsApi.GetFeatureFlags(ctx, c.Options.ProjKey, &ldapi.GetFeatureFlagsOpts{Archived: optional.NewBool(true), Summary: optional.NewBool(true)})
+	if err != nil {
+		return nil, err
+	}
+
 	flagKeys := make([]string, 0, len(flags.Items))
-	for _, flag := range flags.Items {
+	for _, flag := range append(flags.Items, archivedFlags.Items...) {
 		flagKeys = append(flagKeys, flag.Key)
 	}
+
 	return flagKeys, nil
 }
 
@@ -196,7 +219,7 @@ func (c ApiClient) postCodeReferenceRepository(repo RepoParams) error {
 func (c ApiClient) MaybeUpsertCodeReferenceRepository(repo RepoParams) error {
 	currentRepo, err := c.getCodeReferenceRepository(repo.Name)
 	if err != nil && err != NotFoundErr {
-		return fmt.Errorf("error retrieving repository: %s", err)
+		return fmt.Errorf("error retrieving repository: %w", err)
 	}
 
 	if currentRepo != nil {
@@ -231,7 +254,7 @@ func (c ApiClient) MaybeUpsertCodeReferenceRepository(repo RepoParams) error {
 		if !reflect.DeepEqual(currentRepoParams, repo) {
 			err = c.patchCodeReferenceRepository(currentRepoParams, repo)
 			if err != nil {
-				return fmt.Errorf("error updating repository: %s", err)
+				return fmt.Errorf("error updating repository: %w", err)
 			}
 		}
 		return nil
@@ -239,7 +262,7 @@ func (c ApiClient) MaybeUpsertCodeReferenceRepository(repo RepoParams) error {
 
 	err = c.postCodeReferenceRepository(repo)
 	if err != nil {
-		return fmt.Errorf("error creating repository: %s", err)
+		return fmt.Errorf("error creating repository: %w", err)
 	}
 
 	return nil
@@ -252,6 +275,25 @@ func (c ApiClient) PutCodeReferenceBranch(branch BranchRep, repoName string) err
 	}
 	putUrl := fmt.Sprintf("%s%s/%s/branches/%s", c.Options.BaseUri, reposPath, repoName, url.PathEscape(branch.Name))
 	req, err := h.NewRequest("PUT", putUrl, bytes.NewBuffer(branchBytes))
+	if err != nil {
+		return err
+	}
+
+	_, err = c.do(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c ApiClient) PostExtinctionEvents(extinctions []ExtinctionRep, repoName, branchName string) error {
+	data, err := json.Marshal(extinctions)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s%s/%s/branches/%s/extinction-events", c.Options.BaseUri, reposPath, repoName, url.PathEscape(branchName))
+	req, err := h.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
@@ -315,14 +357,16 @@ func (c ApiClient) do(req *h.Request) (*http.Response, error) {
 
 		if err == nil {
 			switch ldErr.Code {
+			case "invalid_request":
+				return res, errors.New(ldErr.Message)
 			case "updateSequenceId_conflict":
 				return res, BranchUpdateSequenceIdConflictErr
 			case "not_found":
 				return res, NotFoundErr
+			case "request_entity_too_large":
+				return res, EntityTooLargeErr
 			case "":
 				// do nothing
-			default:
-				return res, fmt.Errorf("%s, %s", ldErr.Code, ldErr.Message)
 			}
 		}
 		// The LaunchDarkly API should guarantee that we never have to fallback to these generic error messages, but we have them as a safeguard
@@ -335,7 +379,7 @@ func fallbackErrorForStatus(code int) error {
 	case http.StatusBadRequest:
 		return errors.New("bad request")
 	case http.StatusUnauthorized:
-		return errors.New("unauthorized, check your LaunchDarkly access token")
+		return UnauthorizedErr
 	case http.StatusNotFound:
 		return NotFoundErr
 	case http.StatusConflict:
@@ -379,7 +423,7 @@ type BranchCollection struct {
 type BranchRep struct {
 	Name             string              `json:"name"`
 	Head             string              `json:"head"`
-	UpdateSequenceId *int64              `json:"updateSequenceId,omitempty"`
+	UpdateSequenceId *int                `json:"updateSequenceId,omitempty"`
 	SyncTime         int64               `json:"syncTime"`
 	References       []ReferenceHunksRep `json:"references,omitempty"`
 }
@@ -403,7 +447,7 @@ func (b BranchRep) WriteToCSV(outDir, projKey, repo, sha string) (path string, e
 
 	absPath, err := validation.NormalizeAndValidatePath(outDir)
 	if err != nil {
-		return "", fmt.Errorf("invalid outDir '%s': %s", outDir, err)
+		return "", fmt.Errorf("invalid outDir '%s': %w", outDir, err)
 	}
 	path = filepath.Join(absPath, fmt.Sprintf("coderefs_%s_%s_%s.csv", projKey, repo, tag))
 
@@ -431,7 +475,7 @@ func (b BranchRep) WriteToCSV(outDir, projKey, repo, sha string) (path string, e
 		return false
 	})
 
-	records = append([][]string{{"flagKey", "path", "startingLineNumber", "lines"}}, records...)
+	records = append([][]string{{"flagKey", "path", "startingLineNumber", "lines", "aliases"}}, records...)
 	return path, w.WriteAll(records)
 }
 
@@ -443,16 +487,35 @@ type ReferenceHunksRep struct {
 func (r ReferenceHunksRep) toRecords() [][]string {
 	ret := make([][]string, 0, len(r.Hunks))
 	for _, hunk := range r.Hunks {
-		ret = append(ret, []string{hunk.FlagKey, r.Path, strconv.FormatInt(int64(hunk.StartingLineNumber), 10), hunk.Lines})
+		ret = append(ret, []string{hunk.FlagKey, r.Path, strconv.FormatInt(int64(hunk.StartingLineNumber), 10), hunk.Lines, strings.Join(hunk.Aliases, " ")})
 	}
 	return ret
 }
 
 type HunkRep struct {
-	StartingLineNumber int    `json:"startingLineNumber"`
-	Lines              string `json:"lines,omitempty"`
-	ProjKey            string `json:"projKey"`
-	FlagKey            string `json:"flagKey"`
+	StartingLineNumber int      `json:"startingLineNumber"`
+	Lines              string   `json:"lines,omitempty"`
+	ProjKey            string   `json:"projKey"`
+	FlagKey            string   `json:"flagKey"`
+	Aliases            []string `json:"aliases,omitempty"`
+}
+
+// Returns the number of lines overlapping between the receiver (h) and the parameter (hr) hunkreps
+// The return value will be negative if the hunks do not overlap
+func (h HunkRep) Overlap(hr HunkRep) int {
+	return h.StartingLineNumber + h.NumLines() - hr.StartingLineNumber
+}
+
+func (h HunkRep) NumLines() int {
+	return strings.Count(h.Lines, "\n") + 1
+}
+
+type ExtinctionRep struct {
+	Revision string `json:"revision"`
+	Message  string `json:"message"`
+	Time     int64  `json:"time"`
+	ProjKey  string `json:"projKey"`
+	FlagKey  string `json:"flagKey"`
 }
 
 type tableData [][]string
@@ -473,15 +536,23 @@ func (t tableData) Swap(i, j int) {
 
 const maxFlagKeysDisplayed = 50
 
-func (b BranchRep) PrintReferenceCountTable() {
-	data := tableData{}
+func (b BranchRep) CountByFlag(flags []string) map[string]int64 {
 	refCountByFlag := map[string]int64{}
+	for _, flag := range flags {
+		refCountByFlag[flag] = 0
+	}
 	for _, ref := range b.References {
 		for _, hunk := range ref.Hunks {
 			refCountByFlag[hunk.FlagKey]++
 		}
 	}
-	for k, v := range refCountByFlag {
+	return refCountByFlag
+}
+
+func (b BranchRep) PrintReferenceCountTable() {
+	data := tableData{}
+
+	for k, v := range b.CountByFlag(nil) {
 		data = append(data, []string{k, strconv.FormatInt(v, 10)})
 	}
 	sort.Sort(data)
