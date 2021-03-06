@@ -12,10 +12,10 @@ import (
 	git "github.com/go-git/go-git/v5"
 	object "github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/launchdarkly/ld-find-code-refs/internal/ld"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/ld"
 
-	"github.com/launchdarkly/ld-find-code-refs/internal/log"
-	"github.com/launchdarkly/ld-find-code-refs/internal/search"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/log"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/search"
 )
 
 type Client struct {
