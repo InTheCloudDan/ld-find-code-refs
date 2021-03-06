@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/launchdarkly/ld-find-code-refs/internal/log"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/log"
 )
 
 func TestMain(m *testing.M) {

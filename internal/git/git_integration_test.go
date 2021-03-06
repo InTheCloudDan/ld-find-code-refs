@@ -11,7 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 
-	"github.com/launchdarkly/ld-find-code-refs/internal/ld"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/ld"
 )
 
 const (

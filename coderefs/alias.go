@@ -16,8 +16,6 @@ import (
 	"github.com/InTheCloudDan/ld-find-code-refs/internal/validation"
 	"github.com/InTheCloudDan/ld-find-code-refs/options"
 	"github.com/iancoleman/strcase"
-	//"github.com/launchdarkly/ld-find-code-refs/options/option"
-	//"github.com/launchdarkly/ld-find-code-refs/options/validation"
 )
 
 func GenerateAliases(flags []string, aliases []options.Alias, dir string) (map[string][]string, error) {
