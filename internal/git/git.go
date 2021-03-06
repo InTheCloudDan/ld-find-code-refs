@@ -15,7 +15,7 @@ import (
 	"github.com/InTheCloudDan/ld-find-code-refs/internal/ld"
 
 	"github.com/InTheCloudDan/ld-find-code-refs/internal/log"
-	"github.com/InTheCloudDan/ld-find-code-refs/internal/search"
+	"github.com/InTheCloudDan/ld-find-code-refs/search"
 )
 
 type Client struct {
