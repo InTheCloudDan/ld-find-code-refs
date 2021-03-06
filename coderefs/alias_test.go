@@ -3,7 +3,7 @@ package coderefs
 import (
 	"testing"
 
-	o "github.com/launchdarkly/ld-find-code-refs/pkg/options"
+	o "github.com/InTheCloudDan/ld-find-code-refs/options"
 	"github.com/stretchr/testify/assert"
 )
 

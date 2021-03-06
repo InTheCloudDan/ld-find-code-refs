@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/helpers"
+	"github.com/InTheCloudDan/ld-find-code-refs/internal/validation"
+	"github.com/InTheCloudDan/ld-find-code-refs/options"
 	"github.com/iancoleman/strcase"
-	"github.com/launchdarkly/ld-find-code-refs/internal/helpers"
-	"github.com/launchdarkly/ld-find-code-refs/internal/validation"
-	"github.com/launchdarkly/ld-find-code-refs/pkg/options"
 	//"github.com/launchdarkly/ld-find-code-refs/options/option"
 	//"github.com/launchdarkly/ld-find-code-refs/options/validation"
 )
