@@ -131,13 +131,18 @@ func generateHunkOutput(opts options.Options, matcher search.Matcher, branch ld.
 		branch.PrintReferenceCountTable()
 	}
 
-	if opts.DryRun {
+	if opts.DryRun || strings.TrimSpace(opts.FlagKeysJSON) != "" {
 		totalFlags := 0
 		for _, searchElems := range matcher.Elements {
 			totalFlags += len(searchElems.Elements)
 		}
+		mode := "dry run"
+		if strings.TrimSpace(opts.FlagKeysJSON) != "" && !opts.DryRun {
+			mode = "offline"
+		}
 		log.Info.Printf(
-			"dry run found %d code references across %d flags and %d files",
+			"%s found %d code references across %d flags and %d files",
+			mode,
 			branch.TotalHunkCount(),
 			totalFlags,
 			len(branch.References),

@@ -1,7 +1,9 @@
 package flags
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/launchdarkly/ld-find-code-refs/v2/internal/helpers"
 	"github.com/launchdarkly/ld-find-code-refs/v2/internal/ld"
@@ -18,7 +20,8 @@ func GetFlagKeys(opts options.Options, repoParams ld.RepoParams) map[string][]st
 	ldApi := ld.InitApiClient(ld.ApiOptions{ApiKey: opts.AccessToken, BaseUri: opts.BaseUri, UserAgent: helpers.GetUserAgent(opts.UserAgent)})
 	ignoreServiceErrors := opts.IgnoreServiceErrors
 
-	if !isDryRun {
+	// In offline mode (flagKeys provided), skip any network upsert
+	if !isDryRun && strings.TrimSpace(opts.FlagKeysJSON) == "" {
 		err := ldApi.MaybeUpsertCodeReferenceRepository(repoParams)
 		if err != nil {
 			helpers.FatalServiceError(err, ignoreServiceErrors)
@@ -26,6 +29,19 @@ func GetFlagKeys(opts options.Options, repoParams ld.RepoParams) map[string][]st
 	}
 
 	flagKeys := make(map[string][]string)
+
+	// If user provided explicit flag keys via CLI, use them for all projects and skip API fetch
+	if strings.TrimSpace(opts.FlagKeysJSON) != "" {
+		var provided []string
+		if err := json.Unmarshal([]byte(opts.FlagKeysJSON), &provided); err != nil {
+			log.Error.Fatalf("invalid JSON for flagKeys: %v", err)
+		}
+		for _, proj := range opts.Projects {
+			addFlagKeys(flagKeys, provided, proj.Key)
+		}
+		return flagKeys
+	}
+
 	for _, proj := range opts.Projects {
 		flags, err := getFlags(ldApi, proj.Key, opts.SkipArchivedFlags)
 		if err != nil {

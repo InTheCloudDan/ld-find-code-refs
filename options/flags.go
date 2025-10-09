@@ -148,6 +148,11 @@ LaunchDarkly UI. Acceptable values: bitbucket|custom|github|gitlab.`,
 		usage:        `If enabled, archived feature flags will not be fetched from the LaunchDarkly API as input to the tool.`,
 	},
 	{
+		name:         "flagKeys",
+		defaultValue: "",
+		usage:        `JSON array of flag keys to scan for. When provided, flags are not fetched from LaunchDarkly and only these keys are searched. Example: ["checkout-flow","betaFeature"].`,
+	},
+	{
 		name:         "subdirectory",
 		defaultValue: "",
 		usage: `If the .launchdarkly/coderefs.yaml file is not in the root of

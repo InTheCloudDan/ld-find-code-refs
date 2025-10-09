@@ -44,36 +44,37 @@ type Project struct {
 	Aliases []Alias `mapstructure:"aliases"`
 }
 type Options struct {
-	AccessToken         string `mapstructure:"accessToken"`
-	BaseUri             string `mapstructure:"baseUri"`
-	Branch              string `mapstructure:"branch"`
-	CommitUrlTemplate   string `mapstructure:"commitUrlTemplate"`
-	DefaultBranch       string `mapstructure:"defaultBranch"`
-	Dir                 string `mapstructure:"dir" yaml:"-"`
-	HunkUrlTemplate     string `mapstructure:"hunkUrlTemplate"`
-	OutDir              string `mapstructure:"outDir"`
-	ProjKey             string `mapstructure:"projkey"`
-	RepoName            string `mapstructure:"repoName"`
-	RepoType            string `mapstructure:"repoType"`
-	RepoUrl             string `mapstructure:"repoUrl"`
-	Revision            string `mapstructure:"revision"`
-	Subdirectory        string `mapstructure:"subdirectory"`
-	UserAgent           string `mapstructure:"userAgent"`
-	ContextLines        int    `mapstructure:"contextLines"`
-	Lookback            int    `mapstructure:"lookback"`
-	UpdateSequenceId    int    `mapstructure:"updateSequenceId"`
-	AllowTags           bool   `mapstructure:"allowTags"`
-	Debug               bool   `mapstructure:"debug"`
-	DryRun              bool   `mapstructure:"dryRun"`
-	IgnoreServiceErrors bool   `mapstructure:"ignoreServiceErrors"`
-	Prune               bool   `mapstructure:"prune"`
-	SkipArchivedFlags   bool   `mapstructure:"skipArchivedFlags"`
+AccessToken         string `mapstructure:"accessToken"`
+BaseUri             string `mapstructure:"baseUri"`
+Branch              string `mapstructure:"branch"`
+CommitUrlTemplate   string `mapstructure:"commitUrlTemplate"`
+DefaultBranch       string `mapstructure:"defaultBranch"`
+Dir                 string `mapstructure:"dir" yaml:"-"`
+HunkUrlTemplate     string `mapstructure:"hunkUrlTemplate"`
+OutDir              string `mapstructure:"outDir"`
+ProjKey             string `mapstructure:"projkey"`
+RepoName            string `mapstructure:"repoName"`
+RepoType            string `mapstructure:"repoType"`
+RepoUrl             string `mapstructure:"repoUrl"`
+Revision            string `mapstructure:"revision"`
+Subdirectory        string `mapstructure:"subdirectory"`
+UserAgent           string `mapstructure:"userAgent"`
+ContextLines        int    `mapstructure:"contextLines"`
+Lookback            int    `mapstructure:"lookback"`
+UpdateSequenceId    int    `mapstructure:"updateSequenceId"`
+AllowTags           bool   `mapstructure:"allowTags"`
+Debug               bool   `mapstructure:"debug"`
+DryRun              bool   `mapstructure:"dryRun"`
+IgnoreServiceErrors bool   `mapstructure:"ignoreServiceErrors"`
+Prune               bool   `mapstructure:"prune"`
+SkipArchivedFlags   bool   `mapstructure:"skipArchivedFlags"`
+FlagKeysJSON        string `mapstructure:"flagKeys"`
 
-	// The following options can only be configured via YAML configuration
+// The following options can only be configured via YAML configuration
 
-	Aliases    []Alias    `mapstructure:"aliases"`
-	Delimiters Delimiters `mapstructure:"delimiters"`
-	Projects   []Project  `mapstructure:"projects"`
+Aliases    []Alias    `mapstructure:"aliases"`
+Delimiters Delimiters `mapstructure:"delimiters"`
+Projects   []Project  `mapstructure:"projects"`
 }
 
 type Delimiters struct {
@@ -126,9 +127,11 @@ func InitYAML() error {
 // validatePreconditions ensures required flags have been set
 func validateYAMLPreconditions() error {
 	token := viper.GetString("accessToken")
+	flagKeys := strings.TrimSpace(viper.GetString("flagKeys"))
 	dir := viper.GetString("dir")
 	missingRequiredOptions := []string{}
-	if token == "" {
+	// Access token is required unless flagKeys are provided (offline scanning)
+	if token == "" && flagKeys == "" {
 		missingRequiredOptions = append(missingRequiredOptions, "accessToken")
 	}
 	if dir == "" {
@@ -179,7 +182,7 @@ func GetWrapperOptions(dir string, merge func(Options) (Options, error)) (Option
 
 func (o Options) ValidateRequired() error {
 	missingRequiredOptions := []string{}
-	if o.AccessToken == "" {
+	if o.AccessToken == "" && strings.TrimSpace(o.FlagKeysJSON) == "" {
 		missingRequiredOptions = append(missingRequiredOptions, "accessToken")
 	}
 	if o.Dir == "" {
